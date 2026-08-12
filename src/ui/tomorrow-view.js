@@ -2,6 +2,7 @@ import { RECIPES } from "../data/recipes.js";
 import { addDays, isoToday } from "../domain/calendar.js";
 import { buildPreparationTasks } from "../domain/preparation.js";
 import { escapeHtml, renderMealCard } from "./components.js";
+import { workMealLabel } from "./meal-labels.js";
 
 const recipeById = new Map(RECIPES.map((recipe) => [recipe.id, recipe]));
 const dayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -31,12 +32,12 @@ export function renderTomorrowView(state, { today = isoToday() } = {}) {
 
 function renderDecisionCards(slots) {
   const decisions = [
-    ["adult-lunch", "成人午餐", (slot) => slot.workMeal && slot.mealType === "lunch"],
-    ["adult-dinner", "成人晚餐", (slot) => slot.workMeal && slot.mealType === "dinner"],
+    ["adult-lunch", "工作午餐", (slot) => slot.workMeal && slot.mealType === "lunch"],
+    ["adult-dinner", "工作晚餐", (slot) => slot.workMeal && slot.mealType === "dinner"],
     ["family-meal", "家庭餐", (slot) => !slot.workMeal && !slot.outside],
   ];
   return decisions.map(([id, label, predicate]) => {
     const slot = slots.find(predicate);
-    return `<div class="tomorrow-decision" data-tomorrow-card="${id}"><h3>${label}</h3>${slot ? renderMealCard(slot, recipeById.get(slot.recipeId), { audience: slot.audience }) : `<p class="empty-state">${label}暂未安排</p>`}</div>`;
+    return `<div class="tomorrow-decision" data-tomorrow-card="${id}"><h3>${label}</h3>${slot ? renderMealCard(slot, recipeById.get(slot.recipeId), { audience: workMealLabel(slot) }) : `<p class="empty-state">${label}暂未安排</p>`}</div>`;
   }).join("");
 }

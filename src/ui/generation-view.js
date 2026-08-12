@@ -2,12 +2,11 @@ import { RECIPES } from "../data/recipes.js";
 import { addDays } from "../domain/calendar.js";
 import { compatibleRecipesForSlot } from "../domain/scheduler.js";
 import { escapeHtml } from "./components.js";
+import { workMealLabel } from "./meal-labels.js";
 
 const recipeById = new Map(RECIPES.map((recipe) => [recipe.id, recipe]));
 
-const mealLabel = (slot) => (
-  slot.workMeal && slot.mealType === "lunch" ? "成人午餐" : "家庭晚餐"
-);
+const mealLabel = (slot) => (slot.workMeal ? workMealLabel(slot) : "家庭晚餐");
 
 export function renderGenerationView(state) {
   const draft = state.generationDraft;

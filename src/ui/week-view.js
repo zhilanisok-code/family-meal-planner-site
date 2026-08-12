@@ -65,7 +65,7 @@ export function buildWeekendPrepTasks(state) {
 
 function renderWeekendPrep(state) {
   const tasks = buildWeekendPrepTasks(state);
-  return `<section class="weekend-prep" aria-label="本周备餐怎么做"><div class="section-heading"><h2>本周备餐怎么做</h2><span>逐道看准备、做法和保存</span></div>${tasks.length ? `<div class="prep-guide-list">${tasks.map(renderPrepGuideTask).join("")}</div>` : "<p class=\"empty-state\">本周没有需要集中备餐的成人工作餐</p>"}</section>`;
+  return `<section class="weekend-prep" aria-label="本周备餐怎么做"><div class="section-heading"><h2>本周备餐怎么做</h2><span>逐道看准备、做法和保存</span></div>${tasks.length ? `<div class="prep-guide-list">${tasks.map(renderPrepGuideTask).join("")}</div>` : "<p class=\"empty-state\">本周没有需要集中备餐的工作餐</p>"}</section>`;
 }
 
 function renderPrepGuideTask(task) {

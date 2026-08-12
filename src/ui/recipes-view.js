@@ -1,6 +1,7 @@
 import { RECIPES } from "../data/recipes.js";
 import { adjustIngredients } from "../domain/planner.js";
 import { escapeHtml } from "./components.js";
+import { workMealLabel } from "./meal-labels.js";
 
 const SCENARIOS = [
   ["夫妻带饭", ["成人工作餐", "便携午餐"], "🍱"],
@@ -17,6 +18,14 @@ function firstReheat(recipe) {
 
 function normalize(value) {
   return String(value ?? "").toLocaleLowerCase();
+}
+
+export function recipeScenarioLabels(recipe) {
+  return [...new Set((recipe.scenarios ?? []).flatMap((scenario) => {
+    if (scenario !== "成人工作餐") return scenario;
+    const mealLabels = (recipe.mealTypes ?? []).map((mealType) => workMealLabel({ workMeal: true, mealType }));
+    return mealLabels.length ? mealLabels : "工作餐";
+  }))];
 }
 
 export function filterRecipes(recipes, scenario, query) {
@@ -54,7 +63,7 @@ export function renderRecipeDetail(state, recipe) {
   const ingredients = adjustIngredients(recipe, servings);
   return `<article class="recipe-detail">
     <div class="recipe-detail__hero"><img src="${escapeHtml(recipe.image.url)}" alt="${escapeHtml(recipe.title)}" data-food-image><span class="image-fallback" hidden>菜图暂不可用</span><button type="button" class="recipe-detail__back" data-close-recipe aria-label="返回菜谱列表">‹</button></div>
-    <div class="recipe-detail__body"><a class="recipe-source" href="${escapeHtml(recipe.image.sourceUrl)}" target="_blank" rel="noreferrer">图片来源：Unsplash · ${escapeHtml(recipe.image.author)}</a><h1>${escapeHtml(recipe.title)}</h1><p class="recipe-detail__scenarios">${escapeHtml(recipe.scenarios.join(" · "))}</p><div class="recipe-tags"><span>${escapeHtml(recipe.timing)}</span><span>${escapeHtml(recipe.storage)}</span><span>${escapeHtml(firstReheat(recipe))}</span></div>
+    <div class="recipe-detail__body"><a class="recipe-source" href="${escapeHtml(recipe.image.sourceUrl)}" target="_blank" rel="noreferrer">图片来源：Unsplash · ${escapeHtml(recipe.image.author)}</a><h1>${escapeHtml(recipe.title)}</h1><p class="recipe-detail__scenarios">${escapeHtml(recipeScenarioLabels(recipe).join(" · "))}</p><div class="recipe-tags"><span>${escapeHtml(recipe.timing)}</span><span>${escapeHtml(recipe.storage)}</span><span>${escapeHtml(firstReheat(recipe))}</span></div>
       <section class="recipe-portions"><h2>食材份量</h2><div><button type="button" data-preview-serving-delta="-1" aria-label="减少份数" ${servings === 1 ? "disabled" : ""}>−</button><strong>${servings} 份</strong><button type="button" data-preview-serving-delta="1" aria-label="增加份数" ${servings === 8 ? "disabled" : ""}>＋</button></div></section>
       <section class="recipe-ingredients"><h2>准备食材</h2>${ingredients.map((item) => `<div><span>${escapeHtml(item.name)}</span><strong>${escapeHtml(item.displayQty)}</strong></div>`).join("")}</section>
       <section class="recipe-steps"><h2>做法 · ${Math.min(5, recipe.steps.length)} 步</h2>${recipe.steps.slice(0, 5).map((step, index) => `<div class="recipe-step" data-recipe-step="${index + 1}"><b>${index + 1}</b><p>${escapeHtml(step)}</p></div>`).join("")}</section>

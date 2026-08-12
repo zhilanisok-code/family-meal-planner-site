@@ -1,3 +1,5 @@
+import { workMealLabel } from "./meal-labels.js";
+
 const NAV_ITEMS = [
   ["tomorrow", "明日"],
   ["week", "本周"],
@@ -32,7 +34,7 @@ function reheatCondition(methods) {
 export function renderMealCard(slot, recipe, options = {}) {
   const isOutside = Boolean(slot?.outside);
   const title = isOutside ? "外出用餐" : (recipe?.title ?? "待安排餐食");
-  const audience = options.audience ?? slot?.audience ?? "家庭餐";
+  const audience = options.audience ?? workMealLabel(slot);
   const isAvailable = Boolean(recipe) && !isOutside;
   const meta = isAvailable ? `${recipe.timing} · ${recipe.storage} · ${reheatCondition(recipe.reheatMethods)}` : (isOutside ? "本餐已标记为外出用餐，可取消恢复原安排" : "暂未安排，随时可以补充");
   const preference = isAvailable ? recipe.preferenceNotes?.[0] ?? "按家人口味微调" : (isOutside ? "不计入采购和备餐" : "从本周计划中补充");
