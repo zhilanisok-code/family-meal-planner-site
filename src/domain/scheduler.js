@@ -1,7 +1,8 @@
 import { addDays, isValidIsoDate, weekDates } from "./calendar.js";
 
 const weekdayTargets = [
-  { key: "lunch", mealType: "lunch", workMeal: true, audience: "成人工作餐" },
+  { key: "lunch", mealType: "lunch", workMeal: true, audience: "成人工作餐", preferenceKey: "workdayLunch" },
+  { key: "dinner-adult", mealType: "dinner", workMeal: true, audience: "成人工作餐", preferenceKey: "workdayDinner", simple: true },
   { key: "dinner", mealType: "dinner", workMeal: false, audience: "全家家庭餐" },
 ];
 
@@ -21,14 +22,41 @@ const recipeAvoidsIngredients = (recipe, avoidedIds) => (
   !recipe.ingredients?.some((ingredient) => avoidedIds.has(ingredient.id))
 );
 
+const minutesFromTiming = (timing) => {
+  const minutes = Number.parseInt(String(timing ?? "").match(/\d+/)?.[0] ?? "", 10);
+  return Number.isFinite(minutes) ? minutes : Number.POSITIVE_INFINITY;
+};
+
+const isWorkDinner = (slot) => slot?.workMeal && slot.mealType === "dinner";
+
+const isPortableWorkDinnerRecipe = (recipe) => (
+  recipe.scenarios?.includes("成人工作餐")
+  && !String(recipe.storage ?? "").includes("现做现吃")
+  && Array.isArray(recipe.reheatMethods)
+  && recipe.reheatMethods.length > 0
+  && minutesFromTiming(recipe.timing) <= 35
+);
+
+const compareWorkDinnerSimplicity = (left, right) => {
+  const minuteDifference = minutesFromTiming(left.timing) - minutesFromTiming(right.timing);
+  const quickDifference = Number(!left.scenarios?.includes("快速晚餐")) - Number(!right.scenarios?.includes("快速晚餐"));
+  return minuteDifference || quickDifference || left.id.localeCompare(right.id);
+};
+
 export function compatibleRecipesForSlot({ recipes = [], profile = {}, slot } = {}) {
   if (!slot?.mealType) return [];
   const avoidedIds = new Set(profile.preferences?.avoidIngredientIds ?? []);
-  return recipes.filter((recipe) => (
+  const compatible = recipes.filter((recipe) => (
     recipe?.id
-    && recipe.mealTypes?.includes(slot.mealType)
+    && (isWorkDinner(slot)
+      ? recipe.mealTypes?.some((mealType) => mealType === "lunch" || mealType === "dinner")
+      : slot.mealType === "family"
+        ? recipe.mealTypes?.includes("dinner")
+        : recipe.mealTypes?.includes(slot.mealType))
     && recipeAvoidsIngredients(recipe, avoidedIds)
   ));
+  if (!isWorkDinner(slot)) return compatible;
+  return compatible.filter(isPortableWorkDinnerRecipe).sort(compareWorkDinnerSimplicity);
 }
 
 const matchingManualSlot = (manualSlots, date, target) => manualSlots.find((slot) => (
@@ -38,14 +66,12 @@ const matchingManualSlot = (manualSlots, date, target) => manualSlots.find((slot
     : !slot.workMeal && (slot.mealType === "dinner" || slot.mealType === "family"))
 ));
 
-const selectRecipe = (recipes, mealType, avoidedIds, usedRecipeIds, proteinCounts) => {
-  const compatible = recipes.filter((recipe) => (
-    recipe?.id
-    && recipe.mealTypes?.includes(mealType)
-    && recipeAvoidsIngredients(recipe, avoidedIds)
-  ));
-  const unused = compatible.filter((recipe) => !usedRecipeIds.has(recipe.id));
+const selectRecipe = (recipes, profile, target, usedRecipeIds, usedSimpleRecipeIds, proteinCounts) => {
+  const compatible = compatibleRecipesForSlot({ recipes, profile, slot: target });
+  const usedForTarget = target.simple ? usedSimpleRecipeIds : usedRecipeIds;
+  const unused = compatible.filter((recipe) => !usedForTarget.has(recipe.id));
   const candidates = unused.length ? unused : compatible;
+  if (target.simple) return candidates[0] ?? null;
   return candidates.reduce((selected, recipe) => {
     if (!selected) return recipe;
     const selectedCount = proteinCounts.get(selected.proteinGroup) ?? 0;
@@ -64,20 +90,20 @@ export function generateWeekDraft({ recipes = [], profile = {}, slots = [], week
   const preferences = profile.preferences ?? {};
   const manualSlots = slots.filter((slot) => isManualInWeek(slot, weekDateSet)).map((slot) => ({ ...slot }));
   const usedRecipeIds = new Set(manualSlots.map((slot) => slot.recipeId).filter(Boolean));
+  const usedSimpleRecipeIds = new Set(manualSlots.filter(isWorkDinner).map((slot) => slot.recipeId).filter(Boolean));
   const proteinByRecipeId = new Map(recipes.map((recipe) => [recipe.id, recipe.proteinGroup]));
   const proteinCounts = new Map();
   for (const recipeId of usedRecipeIds) {
     const proteinGroup = proteinByRecipeId.get(recipeId);
     if (proteinGroup) proteinCounts.set(proteinGroup, (proteinCounts.get(proteinGroup) ?? 0) + 1);
   }
-  const avoidedIds = new Set(Array.isArray(preferences.avoidIngredientIds) ? preferences.avoidIngredientIds : []);
   const adultServings = servingsFor(Array.isArray(profile.members) ? profile.members : [], "adult");
   const familyServings = servingsFor(Array.isArray(profile.members) ? profile.members : []);
   const draft = [];
 
   for (const date of weekdayDates) {
     for (const target of weekdayTargets) {
-      const enabled = target.workMeal ? preferences.workdayLunch !== false : preferences.workdayDinner !== false;
+      const enabled = target.preferenceKey ? preferences[target.preferenceKey] !== false : true;
       if (!enabled) continue;
 
       const manual = matchingManualSlot(manualSlots, date, target);
@@ -86,7 +112,7 @@ export function generateWeekDraft({ recipes = [], profile = {}, slots = [], week
         continue;
       }
 
-      const recipe = selectRecipe(recipes, target.mealType, avoidedIds, usedRecipeIds, proteinCounts);
+      const recipe = selectRecipe(recipes, profile, target, usedRecipeIds, usedSimpleRecipeIds, proteinCounts);
       if (!recipe) continue;
       const id = `${date}-${target.key}`;
       draft.push({
@@ -101,6 +127,7 @@ export function generateWeekDraft({ recipes = [], profile = {}, slots = [], week
         source: "generated",
       });
       usedRecipeIds.add(recipe.id);
+      if (target.simple) usedSimpleRecipeIds.add(recipe.id);
       proteinCounts.set(recipe.proteinGroup, (proteinCounts.get(recipe.proteinGroup) ?? 0) + 1);
     }
   }

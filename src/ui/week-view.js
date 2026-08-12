@@ -38,9 +38,11 @@ function renderWeekMode(state, week) {
 
 function renderMealRow(type, label, slots) {
   const slot = slots.find((item) => (
-    type === "family"
-      ? !item.workMeal
-      : item.workMeal && item.mealType === type
+    type === "breakfast"
+      ? item.mealType === "breakfast"
+      : type === "family"
+        ? !item.workMeal && (item.mealType === "dinner" || item.mealType === "family")
+        : item.workMeal && item.mealType === type
   ));
   return `<div class="week-meal-row" data-meal-type="${type}"><span>${label}</span>${slot ? `${renderMealCard(slot, recipeById.get(slot.recipeId))}${renderSlotControls(slot)}` : `<p class="empty-state">${label}餐暂未安排</p>`}</div>`;
 }

@@ -1,4 +1,5 @@
 import { RECIPES } from "../data/recipes.js";
+import { compatibleRecipesForSlot } from "../domain/scheduler.js";
 import { escapeHtml } from "./components.js";
 
 export const SWAP_REASONS = ["换个口味", "更快完成", "用现有食材"];
@@ -16,11 +17,6 @@ function findSlotContext(state, slotId) {
 function totalMinutes(recipe) {
   const match = String(recipe?.timing ?? "").match(/(\d+)/);
   return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
-}
-
-function compatibleWithSlot(recipe, slot) {
-  if (slot.mealType === "family") return recipe.scenarios?.includes("家庭晚餐") || recipe.mealTypes?.includes("dinner");
-  return recipe.mealTypes?.includes(slot.mealType);
 }
 
 function weekIngredientIds(week) {
@@ -71,9 +67,12 @@ export function rankSwapCandidates(state, slotId, reason = "换个口味") {
   const usedRecipeIds = new Set(
     week.slots.filter((item) => !item.outside && item.recipeId).map((item) => item.recipeId),
   );
+  const compatibleRecipeIds = new Set(
+    compatibleRecipesForSlot({ recipes: RECIPES, profile: state.profile, slot }).map((recipe) => recipe.id),
+  );
   const ingredientIds = weekIngredientIds(week);
   const ranked = RECIPES
-    .filter((recipe) => recipe.id !== slot.recipeId && compatibleWithSlot(recipe, slot))
+    .filter((recipe) => recipe.id !== slot.recipeId && compatibleRecipeIds.has(recipe.id))
     .map((recipe, order) => ({
       recipe,
       order,

@@ -20,7 +20,7 @@ export function renderTomorrowView(state, { today = isoToday() } = {}) {
   const completed = prepTasks.filter((task) => state.completedPrepTaskIds.includes(task.id)).length;
   const remaining = Math.max(0, prepTasks.length - completed);
   const lunchServings = dateSlots.find((slot) => slot.workMeal && slot.mealType === "lunch")?.servings ?? 0;
-  const familyServings = dateSlots.find((slot) => !slot.workMeal && !slot.outside)?.servings ?? 0;
+  const familyServings = dateSlots.find((slot) => !slot.workMeal && !slot.outside && (slot.mealType === "dinner" || slot.mealType === "family"))?.servings ?? 0;
   const prepMinutes = prepTasks.reduce((sum, task) => sum + task.estimatedMinutes, 0);
 
   return `
@@ -34,7 +34,7 @@ function renderDecisionCards(slots) {
   const decisions = [
     ["adult-lunch", "工作午餐", (slot) => slot.workMeal && slot.mealType === "lunch"],
     ["adult-dinner", "工作晚餐", (slot) => slot.workMeal && slot.mealType === "dinner"],
-    ["family-meal", "家庭餐", (slot) => !slot.workMeal && !slot.outside],
+    ["family-meal", "家庭餐", (slot) => !slot.workMeal && !slot.outside && (slot.mealType === "dinner" || slot.mealType === "family")],
   ];
   return decisions.map(([id, label, predicate]) => {
     const slot = slots.find(predicate);

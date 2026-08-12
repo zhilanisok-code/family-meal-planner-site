@@ -23,9 +23,10 @@ export function renderSettingsView(state) {
       <div class="settings-members">${profile.members.map((member) => `<div class="settings-member"><label><span>称呼</span><input type="text" maxlength="20" value="${escapeHtml(member.label)}" data-member-label="${escapeHtml(member.id)}" aria-label="家庭成员称呼"></label><label><span>${escapeHtml(roleLabels[member.role] ?? member.role)}默认份数</span><input type="number" min="1" max="8" step="1" value="${member.defaultServings}" data-member-servings="${escapeHtml(member.id)}" aria-label="${escapeHtml(member.label)}默认份数"></label></div>`).join("")}</div>
     </section>
     <section class="settings-panel" aria-labelledby="meal-settings-title">
-      <div class="section-heading"><h2 id="meal-settings-title">工作日安排</h2><span>生成时使用</span></div>
+      <div class="section-heading"><h2 id="meal-settings-title">工作餐安排</h2><span>可同时选择</span></div>
+      <p class="settings-help">两项都勾选时，按一天两餐生成；晚餐优先更简单、方便带走和复热的菜。全家晚餐会另外安排。</p>
       <label class="settings-toggle"><span><b>工作午餐</b><small>周一至周五</small></span><input type="checkbox" data-workday-preference="workdayLunch" ${profile.preferences.workdayLunch ? "checked" : ""}></label>
-      <label class="settings-toggle"><span><b>全家晚餐</b><small>周一至周五</small></span><input type="checkbox" data-workday-preference="workdayDinner" ${profile.preferences.workdayDinner ? "checked" : ""}></label>
+      <label class="settings-toggle"><span><b>工作晚餐</b><small>周一至周五</small></span><input type="checkbox" data-workday-preference="workdayDinner" ${profile.preferences.workdayDinner ? "checked" : ""}></label>
     </section>
     <section class="settings-panel" aria-labelledby="avoid-settings-title">
       <div class="section-heading"><h2 id="avoid-settings-title">避免食材</h2><span>普通偏好</span></div>

@@ -264,15 +264,26 @@ const generatedWeekLabel = (targetWeekStart) => {
 };
 
 function applyGeneratedDraft(plan, generationDraft) {
-  const targetDates = new Set(weekDates(generationDraft.weekStart).map(({ iso }) => iso));
+  const dates = weekDates(generationDraft.weekStart).map(({ iso }) => iso);
+  const targetDates = new Set(dates);
+  const generatedWeekdayDates = new Set(dates.slice(0, 5));
   const draftById = new Map(generationDraft.slots.map((slot) => [slot.id, slot]));
   let selectedWeek = null;
+
+  const isManagedGeneratedSlot = (slot) => (
+    slot.source === "generated"
+    && generatedWeekdayDates.has(slot.date)
+    && ((slot.workMeal && (slot.mealType === "lunch" || slot.mealType === "dinner"))
+      || (!slot.workMeal && (slot.mealType === "dinner" || slot.mealType === "family")))
+  );
 
   const weeks = plan.weeks.map((week) => {
     if (selectedWeek || !week.slots.some((slot) => targetDates.has(slot.date))) return week;
     selectedWeek = week.id;
     const consumedIds = new Set();
-    const slots = week.slots.map((slot) => {
+    const slots = week.slots.filter((slot) => (
+      draftById.has(slot.id) || !isManagedGeneratedSlot(slot)
+    )).map((slot) => {
       const replacement = draftById.get(slot.id);
       if (!replacement) return { ...slot };
       consumedIds.add(slot.id);
@@ -529,6 +540,9 @@ function reduce(state, action) {
       return recipeIds.has(action.recipeId) ? { ...state, selectedSwapRecipeId: action.recipeId } : state;
     case "SWAP_MEAL": {
       if (!hasSlot(state.plan, action.slotId) || !recipeIds.has(action.recipeId)) return state;
+      const slot = state.plan.slots.find((item) => item.id === action.slotId);
+      const compatibleIds = new Set(compatibleRecipesForSlot({ recipes: RECIPES, profile: state.profile, slot }).map((recipe) => recipe.id));
+      if (!compatibleIds.has(action.recipeId)) return state;
       const plan = updateSlot(swapMeal(state.plan, action.slotId, action.recipeId), action.slotId, {});
       return {
         ...state,
