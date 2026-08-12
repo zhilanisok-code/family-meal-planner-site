@@ -24,7 +24,7 @@ export function renderSettingsView(state) {
     </section>
     <section class="settings-panel" aria-labelledby="meal-settings-title">
       <div class="section-heading"><h2 id="meal-settings-title">工作日安排</h2><span>生成时使用</span></div>
-      <label class="settings-toggle"><span><b>成人带饭午餐</b><small>周一至周五</small></span><input type="checkbox" data-workday-preference="workdayLunch" ${profile.preferences.workdayLunch ? "checked" : ""}></label>
+      <label class="settings-toggle"><span><b>工作午餐</b><small>周一至周五</small></span><input type="checkbox" data-workday-preference="workdayLunch" ${profile.preferences.workdayLunch ? "checked" : ""}></label>
       <label class="settings-toggle"><span><b>全家晚餐</b><small>周一至周五</small></span><input type="checkbox" data-workday-preference="workdayDinner" ${profile.preferences.workdayDinner ? "checked" : ""}></label>
     </section>
     <section class="settings-panel" aria-labelledby="avoid-settings-title">
