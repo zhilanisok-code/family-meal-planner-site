@@ -1,7 +1,7 @@
 import { RECIPES } from "../data/recipes.js";
 import { DEFAULT_PROFILE } from "../data/profile.js";
 import { SEED_PLAN } from "../data/seed-plan.js";
-import { weekDates, weekStart as calendarWeekStart } from "../domain/calendar.js";
+import { isWeekday, weekDates, weekStart as calendarWeekStart } from "../domain/calendar.js";
 import { buildShoppingList, swapMeal } from "../domain/planner.js";
 import { compatibleRecipesForSlot, generateWeekDraft } from "../domain/scheduler.js";
 
@@ -47,6 +47,7 @@ const createSeedState = () => ({
   activeRecipeId: null,
   recipeActionMessage: "",
   recipeFocusKey: null,
+  recipeAssignmentTarget: null,
   previewServings: 2,
   activeSwapSlotId: null,
   swapFocusKey: null,
@@ -79,6 +80,24 @@ const isSlot = (slot, requireSource = false) => (
   && typeof slot.workMeal === "boolean"
   && typeof slot.audience === "string"
   && (!requireSource || SOURCE_VALUES.has(slot.source))
+);
+
+const isRecipeAssignmentTarget = (target) => (
+  target
+  && typeof target === "object"
+  && isIsoCalendarDate(target.date)
+  && (!target.workMeal || isWeekday(target.date))
+  && (
+    (target.workMeal === true && (target.mealType === "lunch" || target.mealType === "dinner"))
+    || (target.workMeal === false && target.mealType === "family")
+  )
+);
+
+const slotMatchesTarget = (slot, target) => (
+  slot?.date === target.date
+  && (target.workMeal
+    ? slot.workMeal && slot.mealType === target.mealType
+    : !slot.workMeal && (slot.mealType === "dinner" || slot.mealType === "family"))
 );
 
 const hasUniqueWeeklySlotIds = (plan) => {
@@ -232,6 +251,7 @@ const normalizePersistedState = (state) => {
     ...state,
     recipeActionMessage: Object.hasOwn(state, "recipeActionMessage") ? state.recipeActionMessage : "",
     recipeFocusKey: Object.hasOwn(state, "recipeFocusKey") ? state.recipeFocusKey : null,
+    recipeAssignmentTarget: null,
     swapFocusKey: Object.hasOwn(state, "swapFocusKey") ? state.swapFocusKey : null,
     selectedSwapRecipeId: Object.hasOwn(state, "selectedSwapRecipeId") ? state.selectedSwapRecipeId : null,
     prototypeMenuOpen: Object.hasOwn(state, "prototypeMenuOpen") ? state.prototypeMenuOpen : false,
@@ -319,20 +339,28 @@ function applyGeneratedDraft(plan, generationDraft) {
   };
 }
 
-function upsertWorkLunch(plan, { date, recipeId, servings }) {
-  const targetWeekStart = calendarWeekStart(date);
-  const workLunch = (slot) => slot.date === date && slot.workMeal && slot.mealType === "lunch";
+function upsertMealSlot(plan, { target, recipeId, servings }) {
+  const targetWeekStart = calendarWeekStart(target.date);
   const occupiedIds = new Set(plan.weeks.flatMap((week) => week.slots.map((slot) => slot.id)));
   const uniqueId = () => {
-    const base = `${date}-lunch`;
+    if (target.workMeal && target.mealType === "lunch") {
+      const lunchBase = `${target.date}-lunch`;
+      if (!occupiedIds.has(lunchBase)) return lunchBase;
+      const adultBase = `${target.date}-adult-lunch`;
+      if (!occupiedIds.has(adultBase)) return adultBase;
+      let suffix = 2;
+      while (occupiedIds.has(`${adultBase}-${suffix}`)) suffix += 1;
+      return `${adultBase}-${suffix}`;
+    }
+    const base = target.workMeal
+      ? `${target.date}-dinner-adult`
+      : `${target.date}-family`;
     if (!occupiedIds.has(base)) return base;
-    const adultBase = `${date}-adult-lunch`;
-    if (!occupiedIds.has(adultBase)) return adultBase;
     let suffix = 2;
-    while (occupiedIds.has(`${adultBase}-${suffix}`)) suffix += 1;
-    return `${adultBase}-${suffix}`;
+    while (occupiedIds.has(`${base}-${suffix}`)) suffix += 1;
+    return `${base}-${suffix}`;
   };
-  const existingLunch = plan.weeks.flatMap((week) => week.slots).find(workLunch);
+  const existingSlot = plan.weeks.flatMap((week) => week.slots).find((slot) => slotMatchesTarget(slot, target));
   const targetWeekIndex = plan.weeks.findIndex((week) => week.slots.some((slot) => calendarWeekStart(slot.date) === targetWeekStart));
   const occupiedWeekIds = new Set(plan.weeks.map((week) => week.id));
   const uniqueGeneratedWeekId = () => {
@@ -342,34 +370,34 @@ function upsertWorkLunch(plan, { date, recipeId, servings }) {
     while (occupiedWeekIds.has(`${base}-${suffix}`)) suffix += 1;
     return `${base}-${suffix}`;
   };
-  const nextLunch = existingLunch
-    ? { ...existingLunch, recipeId, servings, outside: false, source: "manual" }
+  const nextSlot = existingSlot
+    ? { ...existingSlot, recipeId, servings, outside: false, source: "manual" }
     : {
       id: uniqueId(),
-      date,
-      mealType: "lunch",
+      date: target.date,
+      mealType: target.mealType,
       recipeId,
       servings,
       outside: false,
-      workMeal: true,
-      audience: "成人工作餐",
+      workMeal: target.workMeal,
+      audience: target.workMeal ? "成人工作餐" : "全家家庭餐",
       source: "manual",
     };
-  let retainedLunch = false;
+  let retainedSlot = false;
 
   const weeks = plan.weeks.map((week, index) => {
     const slots = [];
     for (const slot of week.slots) {
-      if (!workLunch(slot)) {
+      if (!slotMatchesTarget(slot, target)) {
         slots.push({ ...slot });
         continue;
       }
-      if (!retainedLunch) {
-        slots.push(nextLunch);
-        retainedLunch = true;
+      if (!retainedSlot) {
+        slots.push(nextSlot);
+        retainedSlot = true;
       }
     }
-    if (!existingLunch && index === targetWeekIndex) slots.push(nextLunch);
+    if (!existingSlot && index === targetWeekIndex) slots.push(nextSlot);
     return {
       ...week,
       prepTasks: week.prepTasks.map((task) => ({ ...task })),
@@ -377,11 +405,11 @@ function upsertWorkLunch(plan, { date, recipeId, servings }) {
     };
   });
 
-  if (!existingLunch && targetWeekIndex === -1) {
+  if (!existingSlot && targetWeekIndex === -1) {
     weeks.push({
       id: uniqueGeneratedWeekId(),
       label: generatedWeekLabel(targetWeekStart),
-      slots: [nextLunch],
+      slots: [nextSlot],
       prepTasks: [],
     });
   }
@@ -450,7 +478,7 @@ function reduce(state, action) {
   switch (action.type) {
     case "NAVIGATE":
       return ROUTES.has(action.route)
-        ? { ...state, route: action.route, prototypeMenuOpen: false, generationDraft: null, activeRecipeId: null }
+        ? { ...state, route: action.route, prototypeMenuOpen: false, generationDraft: null, activeRecipeId: null, recipeAssignmentTarget: null }
         : state;
     case "SELECT_WEEK":
       return typeof action.weekId === "string" && action.weekId ? { ...state, selectedWeek: action.weekId } : state;
@@ -554,8 +582,28 @@ function reduce(state, action) {
       };
     }
     case "UPSERT_WORK_LUNCH": {
-      if (!isIsoCalendarDate(action.date) || !recipeIds.has(action.recipeId) || !Number.isInteger(action.servings) || action.servings < 1 || !hasUniqueWeeklySlotIds(state.plan) || !hasUniqueNaturalWeekOwnership(state.plan)) return state;
-      const plan = upsertWorkLunch(state.plan, action);
+      if (!isIsoCalendarDate(action.date) || !isWeekday(action.date) || !recipeIds.has(action.recipeId) || !Number.isInteger(action.servings) || action.servings < 1 || !hasUniqueWeeklySlotIds(state.plan) || !hasUniqueNaturalWeekOwnership(state.plan)) return state;
+      const target = { date: action.date, mealType: "lunch", workMeal: true };
+      const compatibleIds = new Set(compatibleRecipesForSlot({ recipes: RECIPES, profile: state.profile, slot: target }).map((recipe) => recipe.id));
+      if (!compatibleIds.has(action.recipeId)) return state;
+      const plan = upsertMealSlot(state.plan, { target, recipeId: action.recipeId, servings: action.servings });
+      const activeSwapWasRemoved = state.activeSwapSlotId && !hasSlot(plan, state.activeSwapSlotId);
+      return {
+        ...state,
+        plan,
+        lastShoppingDelta: buildShoppingDelta(state.plan, plan),
+        ...(activeSwapWasRemoved ? {
+          activeSwapSlotId: null,
+          swapFocusKey: null,
+          selectedSwapRecipeId: null,
+        } : {}),
+      };
+    }
+    case "UPSERT_MEAL_SLOT": {
+      if (!isRecipeAssignmentTarget(action.target) || !recipeIds.has(action.recipeId) || !Number.isInteger(action.servings) || action.servings < 1 || !hasUniqueWeeklySlotIds(state.plan) || !hasUniqueNaturalWeekOwnership(state.plan)) return state;
+      const compatibleIds = new Set(compatibleRecipesForSlot({ recipes: RECIPES, profile: state.profile, slot: action.target }).map((recipe) => recipe.id));
+      if (!compatibleIds.has(action.recipeId)) return state;
+      const plan = upsertMealSlot(state.plan, { target: action.target, recipeId: action.recipeId, servings: action.servings });
       const activeSwapWasRemoved = state.activeSwapSlotId && !hasSlot(plan, state.activeSwapSlotId);
       return {
         ...state,
@@ -578,6 +626,33 @@ function reduce(state, action) {
       return typeof action.scenario === "string" ? { ...state, recipeScenario: action.scenario } : state;
     case "SET_RECIPE_SEARCH":
       return typeof action.query === "string" ? { ...state, recipeSearch: action.query } : state;
+    case "START_RECIPE_ASSIGNMENT": {
+      if (!isRecipeAssignmentTarget(action.target)) return state;
+      const target = { ...action.target };
+      const existing = state.plan.slots.find((slot) => slotMatchesTarget(slot, target));
+      const role = target.workMeal ? "adult" : null;
+      const defaultServings = state.profile.members
+        .filter((member) => !role || member.role === role)
+        .reduce((sum, member) => sum + member.defaultServings, 0) || (target.workMeal ? 2 : 4);
+      const servings = Number.isInteger(existing?.servings) && existing.servings >= 1
+        ? existing.servings
+        : Math.min(8, Math.max(1, defaultServings));
+      return {
+        ...state,
+        route: "recipes",
+        activeRecipeId: null,
+        recipeActionMessage: "",
+        recipeAssignmentTarget: target,
+        recipeScenario: "all",
+        recipeSearch: "",
+        previewServings: servings,
+        prototypeMenuOpen: false,
+      };
+    }
+    case "CANCEL_RECIPE_ASSIGNMENT":
+      return state.recipeAssignmentTarget
+        ? { ...state, route: "tomorrow", activeRecipeId: null, recipeActionMessage: "", recipeAssignmentTarget: null }
+        : state;
     case "OPEN_RECIPE":
       return recipeIds.has(action.recipeId) ? { ...state, activeRecipeId: action.recipeId, recipeActionMessage: "" } : state;
     case "CLOSE_RECIPE":
@@ -631,7 +706,11 @@ export function createStore(storage) {
   const persist = () => {
     if (!storageAvailable) return false;
     try {
-      const { generationDraft: _generationDraft, ...persistedState } = state;
+      const {
+        generationDraft: _generationDraft,
+        recipeAssignmentTarget: _recipeAssignmentTarget,
+        ...persistedState
+      } = state;
       storage?.setItem(STORAGE_KEY, JSON.stringify(persistedState));
       return true;
     } catch {

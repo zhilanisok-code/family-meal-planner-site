@@ -616,6 +616,33 @@ a:focus-visible,
   text-align: center;
 }
 
+.tomorrow-empty-note {
+  margin: 0 0 var(--space-3);
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.tomorrow-empty-slot {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.tomorrow-empty-slot p {
+  margin: 0;
+}
+
+.tomorrow-empty-slot button {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-soft);
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
 .shopping-summary,
 .recipe-hero,
 .recipe-card,
@@ -919,6 +946,38 @@ a:focus-visible,
 .recipe-results {
   display: grid;
   gap: var(--space-2);
+}
+
+.recipe-assignment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-soft);
+  color: var(--color-primary);
+}
+
+.recipe-assignment div {
+  display: grid;
+  gap: 2px;
+}
+
+.recipe-assignment span {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+}
+
+.recipe-assignment button {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .recipe-results .section-heading {

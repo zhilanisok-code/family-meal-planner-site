@@ -1,6 +1,6 @@
 import { createStore } from "./state/store.js";
 import { RECIPES } from "./data/recipes.js";
-import { addDays, isoToday, weekStart } from "./domain/calendar.js";
+import { addDays, isoToday, isWeekday, weekStart } from "./domain/calendar.js";
 import { escapeHtml, renderBottomNav, renderTomorrowView, renderWeekView } from "./ui/components.js";
 import { renderShoppingView } from "./ui/shopping-view.js";
 import { renderRecipeDetail, renderRecipesView } from "./ui/recipes-view.js";
@@ -135,7 +135,7 @@ export function navigate(route, { restoreFocus = false } = {}) {
 export function addActiveRecipeToTomorrow(targetStore = store, { today = isoToday() } = {}) {
   const state = targetStore.getState();
   const targetDate = addDays(today, 1);
-  if (typeof targetDate !== "string" || !hasSafePlanForWorkLunch(state?.plan)) return { changed: false, created: false, message: "" };
+  if (typeof targetDate !== "string" || !isWeekday(targetDate) || !hasSafePlanForWorkLunch(state?.plan)) return { changed: false, created: false, message: "" };
   const hasWorkLunch = state.plan.weeks.some((week) => week.slots.some((item) => (
     item.date === targetDate && item.workMeal && item.mealType === "lunch"
   )));
@@ -180,6 +180,60 @@ export function addActiveRecipeToTomorrow(targetStore = store, { today = isoToda
   targetStore.dispatch({ type: "CLOSE_RECIPE" });
   targetStore.dispatch({ type: "NAVIGATE", route: "week" });
   return { changed: true, created: !hasWorkLunch, message: "" };
+}
+
+function slotMatchesRecipeAssignment(slot, target) {
+  return slot?.date === target?.date
+    && (target.workMeal
+      ? slot.workMeal && slot.mealType === target.mealType
+      : !slot.workMeal && (slot.mealType === "dinner" || slot.mealType === "family"));
+}
+
+export function assignActiveRecipeToTomorrowSlot(targetStore = store) {
+  const state = targetStore.getState();
+  const target = state.recipeAssignmentTarget;
+  if (
+    !target
+    || !state.activeRecipeId
+    || !Number.isInteger(state.previewServings)
+    || state.previewServings < 1
+    || !hasSafePlanForWorkLunch(state.plan)
+  ) return { changed: false, created: false };
+
+  const existed = state.plan.weeks.some((week) => week.slots.some((slot) => slotMatchesRecipeAssignment(slot, target)));
+  targetStore.dispatch({
+    type: "UPSERT_MEAL_SLOT",
+    target,
+    recipeId: state.activeRecipeId,
+    servings: state.previewServings,
+  });
+
+  const nextState = targetStore.getState();
+  const targetSlots = nextState.plan.weeks
+    .flatMap((week) => week.slots)
+    .filter((slot) => slotMatchesRecipeAssignment(slot, target));
+  const targetSlot = targetSlots[0];
+  const mirroredSlots = targetSlot
+    ? nextState.plan.slots.filter((slot) => slot.id === targetSlot.id)
+    : [];
+  const targetWeeks = targetSlot
+    ? nextState.plan.weeks.filter((week) => week.slots.some((slot) => slot.id === targetSlot.id))
+    : [];
+  if (
+    targetSlots.length !== 1
+    || targetSlot.recipeId !== state.activeRecipeId
+    || targetSlot.servings !== state.previewServings
+    || targetSlot.outside !== false
+    || targetSlot.source !== "manual"
+    || mirroredSlots.length !== 1
+    || !slotsMatch(targetSlot, mirroredSlots[0])
+    || targetWeeks.length !== 1
+  ) return { changed: false, created: false };
+
+  targetStore.dispatch({ type: "SELECT_WEEK", weekId: targetWeeks[0].id });
+  targetStore.dispatch({ type: "SELECT_DATE", date: target.date });
+  targetStore.dispatch({ type: "CANCEL_RECIPE_ASSIGNMENT" });
+  return { changed: true, created: !existed };
 }
 
 export function findRecipeFocusTarget(root, focusKey) {
@@ -289,6 +343,17 @@ if (typeof document !== "undefined") {
     }
     const dateTarget = event.target.closest("[data-date]");
     if (dateTarget) return store.dispatch({ type: "SELECT_DATE", date: dateTarget.dataset.date });
+    const mealPlanTarget = event.target.closest("[data-plan-tomorrow-meal]");
+    if (mealPlanTarget) {
+      return store.dispatch({
+        type: "START_RECIPE_ASSIGNMENT",
+        target: {
+          date: mealPlanTarget.dataset.targetDate,
+          mealType: mealPlanTarget.dataset.targetMealType,
+          workMeal: mealPlanTarget.dataset.targetWorkMeal === "true",
+        },
+      });
+    }
     const servingTarget = event.target.closest("[data-serving-delta]");
     if (servingTarget) {
       const slot = store.getState().plan.weeks.flatMap((week) => week.slots).find((item) => item.id === servingTarget.dataset.slotId);
@@ -301,6 +366,7 @@ if (typeof document !== "undefined") {
       return store.dispatch({ type: "OPEN_RECIPE", recipeId: recipeTarget.dataset.openRecipe });
     }
     if (event.target.closest("[data-close-recipe]")) return closeRecipe();
+    if (event.target.closest("[data-cancel-recipe-assignment]")) return store.dispatch({ type: "CANCEL_RECIPE_ASSIGNMENT" });
     if (event.target.closest("[data-toggle-prototype-menu]")) return store.dispatch({ type: "TOGGLE_PROTOTYPE_MENU" });
     if (event.target.closest("[data-reset-demo]")) return store.dispatch({ type: "RESET_DEMO" });
     if (event.target.closest("[data-close-swap]")) return closeSwap();
@@ -324,7 +390,8 @@ if (typeof document !== "undefined") {
       return store.dispatch({ type: "SET_RECIPE_PREVIEW_SERVINGS", servings: next });
     }
     if (event.target.closest("[data-add-recipe]")) {
-      addActiveRecipeToTomorrow();
+      if (store.getState().recipeAssignmentTarget) assignActiveRecipeToTomorrowSlot();
+      else addActiveRecipeToTomorrow();
       return;
     }
     const swapTarget = event.target.closest("[data-open-swap]");

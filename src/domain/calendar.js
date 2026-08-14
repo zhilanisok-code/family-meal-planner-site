@@ -11,6 +11,13 @@ export function isValidIsoDate(value) {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
 
+export function isWeekday(iso) {
+  const date = dateFromIso(iso);
+  if (!date) return false;
+  const day = date.getUTCDay();
+  return day >= 1 && day <= 5;
+}
+
 export function isoToday(clock = new Date()) {
   const date = typeof clock === "function" ? clock() : clock;
   const parts = new Intl.DateTimeFormat("en", {
